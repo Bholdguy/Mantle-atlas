@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atlas Verdict — On-chain RWA Attestation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0F0F11;
+  --surface:#1A1A1E;
+  --border:#2A2A2F;
+  --text-1:#EEEEEF;
+  --text-2:#A0A0AB;
+  --text-3:#6C6C74;
+  --accent:#65F0C4;   /* precious — button flip, pass state, live dot */
+  --accent-2:#FFC46B; /* emotional moment — the FLAGGED seal */
+  --fail:#FF6B5E;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg);
+  color:var(--text-2);
+  font-family:'Space Grotesk',system-ui,sans-serif;
+  font-weight:400;
+  min-height:100%;
+  padding:64px 24px 96px;
+  display:flex;
+  justify-content:center;
+}
+.wrap{width:100%;max-width:560px}
+.mono{font-family:'IBM Plex Mono',monospace}
+section{padding-top:40px;margin-top:40px;border-top:1px solid var(--border)}
+
+/* eyebrow pattern */
+.eyebrow{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--text-3);margin-bottom:20px;
+}
+
+/* header */
+h1{
+  font-family:'Syne',sans-serif;font-weight:800;
+  font-size:44px;letter-spacing:-.02em;line-height:1.05;
+  color:var(--text-1);
+}
+h1 .stroke{color:transparent}
+.sub{color:var(--text-2);font-size:17px;line-height:1.65;margin-top:18px;max-width:44ch}
+
+/* query card */
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:20px;
+}
+label{display:block;margin-bottom:12px}
+.row{display:flex;gap:10px}
+input{
+  flex:1;min-width:0;
+  background:var(--bg);border:1px solid var(--border);border-radius:10px;
+  color:var(--text-1);padding:14px;font-size:13px;
+  font-family:'IBM Plex Mono',monospace;
+}
+input:focus{outline:1px solid var(--accent);outline-offset:2px}
+button.go{
+  background:var(--surface);color:var(--text-1);
+  border:1px solid var(--border);border-radius:10px;
+  padding:14px 22px;font-weight:700;font-size:14px;cursor:pointer;
+  font-family:'Space Grotesk',sans-serif;white-space:nowrap;
+  transition:transform .15s ease, background .15s ease, color .15s ease;
+}
+button.go:hover{transform:scale(.95);background:var(--accent);color:var(--bg);border-color:var(--accent)}
+button.go:active{transform:scale(.90)}
+button.go:disabled{opacity:.5;cursor:wait;transform:none}
+
+/* scan bar */
+.scan{height:2px;background:var(--border);margin-top:18px;overflow:hidden;display:none}
+.scan.on{display:block}
+.scan i{display:block;height:100%;width:35%;background:var(--accent);animation:scan 1.1s linear infinite}
+@keyframes scan{0%{transform:translateX(-120%)}100%{transform:translateX(320%)}}
+@media (prefers-reduced-motion:reduce){.scan i{animation:none;width:100%}}
+
+.status{margin-top:14px;font-size:12.5px;color:var(--text-3);font-family:'IBM Plex Mono',monospace;min-height:18px;word-break:break-word;line-height:1.6}
+.status.err{color:var(--fail)}
+
+/* result */
+#result{display:none}
+.tokenhead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:22px}
+.tokenname{font-family:'Syne',sans-serif;font-weight:800;font-size:26px;color:var(--text-1);letter-spacing:-.01em}
+.tokenaddr{font-size:11.5px;color:var(--text-3)}
+
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.check{border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--surface)}
+.check .k{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-3);font-family:'IBM Plex Mono',monospace}
+.check .v{margin-top:10px;font-size:15px;font-weight:700;color:var(--text-1);display:flex;align-items:center;gap:8px;line-height:1.35}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.pass .dot{background:var(--accent)}
+.fail .dot{background:var(--fail)}
+.fail .v{color:var(--fail)}
+
+/* seal block — the emotional moment */
+.sealrow{position:relative;border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:22px;overflow:hidden;margin-bottom:10px}
+.sealrow .k{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-3);font-family:'IBM Plex Mono',monospace;margin-bottom:12px}
+.summary{font-size:14.5px;line-height:1.7;color:var(--text-2);max-width:72%}
+.seal{
+  position:absolute;right:18px;top:50%;
+  transform:translateY(-50%) rotate(-7deg);
+  border:2px solid currentColor;border-radius:8px;
+  padding:9px 13px;font-family:'IBM Plex Mono',monospace;
+  font-size:13px;letter-spacing:.2em;font-weight:500;
+}
+.seal small{display:block;font-size:8px;letter-spacing:.24em;opacity:.7;margin-top:4px}
+.seal.mint{color:var(--accent)} .seal.red{color:var(--fail)} .seal.amber{color:var(--accent-2)}
+
+/* meta list */
+.meta{border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.meta .item{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+.meta .item:last-child{border-bottom:none}
+.meta .k{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-3);font-family:'IBM Plex Mono',monospace}
+.meta .v{font-size:12.5px;color:var(--text-1);word-break:break-all;font-family:'IBM Plex Mono',monospace;display:flex;align-items:flex-start;gap:10px;justify-content:space-between;line-height:1.6}
+.copy{
+  background:none;border:1px solid var(--border);color:var(--text-3);
+  border-radius:6px;font-size:10px;padding:4px 9px;cursor:pointer;
+  font-family:'IBM Plex Mono',monospace;flex-shrink:0;
+  transition:transform .15s ease, color .15s ease, border-color .15s ease;
+}
+.copy:hover{transform:scale(.95);color:var(--accent);border-color:var(--accent)}
+a.link{color:var(--text-1);text-decoration:underline;text-underline-offset:3px;font-size:12.5px}
+a.link:hover{color:var(--accent)}
+
+footer{margin-top:56px;padding-top:32px;border-top:1px solid var(--border);font-size:11px;color:var(--text-3);font-family:'IBM Plex Mono',monospace;line-height:1.8;word-break:break-all}
+footer b{color:var(--text-2);font-weight:500}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Mantle Network · Chain 5000</p>
+    <h1>Atlas <span class="stroke" style="-webkit-text-stroke:1.5px #EEEEEF">Verdict</span></h1>
+    <p class="sub">AI-verified RWA attestations, committed on-chain. Query any token this agent has judged. The verdict is read live from the contract, not a database.</p>
+  </header>
+
+  <section>
+    <div class="card">
+      <label class="eyebrow" style="margin-bottom:12px" for="tok">RWA token address</label>
+      <div class="row">
+        <input id="tok" class="mono" value="0x68fa48B1C2FE52b3D776e1953e0E782b5044Ce28" spellcheck="false">
+        <button class="go" id="go" onclick="run()">Verify</button>
+      </div>
+      <div class="scan" id="scan"><i></i></div>
+      <div class="status" id="status">Ready. Reads directly from Mantle RPC.</div>
+    </div>
+  </section>
+
+  <section id="result">
+    <div class="tokenhead">
+      <div class="tokenname" id="tname">—</div>
+      <div class="tokenaddr mono" id="taddr"></div>
+    </div>
+
+    <div class="checks">
+      <div class="check" id="c-id">
+        <div class="k">Identity check</div>
+        <div class="v"><span class="dot"></span><span id="v-id">—</span></div>
+      </div>
+      <div class="check" id="c-bk">
+        <div class="k">Backing check</div>
+        <div class="v"><span class="dot"></span><span id="v-bk">—</span></div>
+      </div>
+    </div>
+
+    <div class="sealrow">
+      <div class="k">Agent reasoning</div>
+      <p class="summary" id="summary">—</p>
+      <div class="seal" id="seal">VERDICT<small>ATTESTED ON MANTLE</small></div>
+    </div>
+
+    <div class="meta">
+      <div class="item">
+        <span class="k">Reasoning hash — keccak256</span>
+        <span class="v"><span id="rhash">—</span><button class="copy" onclick="cp('rhash')">copy</button></span>
+      </div>
+      <div class="item">
+        <span class="k">Attested at</span>
+        <span class="v" id="ts">—</span>
+      </div>
+      <div class="item">
+        <span class="k">Verify independently</span>
+        <a class="link" id="scanlink" href="#" target="_blank" rel="noopener">View contract on Mantlescan</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Attestation contract <b id="caddr"></b><br>
+    Built for the Mantle ecosystem · verdicts are immutable once logged
+  </footer>
+</div>
+
+<script>
+const CONTRACT = "0xFb9cD072E66585bb867a1744F2e26Fd4AFdAdBA1";
+const RPCS = [
+  "https://rpc.mantle.xyz",
+  "https://mantle-rpc.publicnode.com",
+  "https://mantle.drpc.org"
+];
+document.getElementById("caddr").textContent = CONTRACT;
+document.getElementById("scanlink").href = "https://mantlescan.xyz/address/" + CONTRACT;
+
+const MANTLE = ethers.Network.from(5000);
+let provider = null;
+
+async function getProvider(){
+  if(provider) return provider;
+  for(const url of RPCS){
+    try{
+      const p = new ethers.JsonRpcProvider(url, MANTLE, { staticNetwork: MANTLE });
+      await p.getBlockNumber(); // liveness probe
+      provider = p;
+      return p;
+    }catch(e){ /* try next RPC */ }
+  }
+  throw new Error("Could not reach any Mantle RPC. If this is a sandboxed preview, open the file in a normal browser tab instead.");
+}
+
+// The contract's exact getter name isn't bundled here, so we probe the
+// most likely read interfaces in order and use the first that decodes.
+const CANDIDATES = [
+  { sig:"function verdicts(address) view returns (address,bool,bool,bytes32,string,uint256)", arg:"addr" },
+  { sig:"function verdicts(address) view returns (bool,bool,bytes32,string,uint256)",         arg:"addr" },
+  { sig:"function getVerdict(address) view returns (address,bool,bool,bytes32,string,uint256)",arg:"addr" },
+  { sig:"function getVerdict(address) view returns (bool,bool,bytes32,string,uint256)",        arg:"addr" },
+  { sig:"function verdicts(uint256) view returns (address,bool,bool,bytes32,string,uint256)",  arg:"zero" },
+  { sig:"function latestVerdict() view returns (address,bool,bool,bytes32,string,uint256)",    arg:"none" },
+  { sig:"function verdict() view returns (address,bool,bool,bytes32,string,uint256)",          arg:"none" }
+];
+
+function normalize(res){
+  const vals = Array.from(res);
+  const out = { token:null, id:null, bk:null, hash:null, summary:"", ts:0n };
+  const bools = vals.filter(v => typeof v === "boolean");
+  out.id = bools[0]; out.bk = bools[1];
+  for(const v of vals){
+    if(typeof v === "string" && v.startsWith("0x") && v.length === 66) out.hash = v;
+    else if(typeof v === "string" && v.startsWith("0x") && v.length === 42) out.token = v;
+    else if(typeof v === "string") out.summary = v;
+    else if(typeof v === "bigint") out.ts = v;
+  }
+  return out;
+}
+
+async function readVerdict(tokenAddr){
+  const provider = await getProvider();
+  for(const c of CANDIDATES){
+    try{
+      const iface = new ethers.Contract(CONTRACT, [c.sig], provider);
+      const fn = Object.values(iface.interface.fragments)[0].name;
+      const args = c.arg === "addr" ? [tokenAddr] : c.arg === "zero" ? [0] : [];
+      const res = await iface[fn](...args);
+      const n = normalize(res);
+      if(n.ts === 0n && !n.summary) continue; // empty slot — wrong key or wrong getter
+      return n;
+    }catch(e){ /* wrong selector or shape — try next */ }
+  }
+  throw new Error("No readable verdict found for this token on the contract.");
+}
+
+async function tokenSymbol(addr){
+  try{
+    const provider = await getProvider();
+    const erc = new ethers.Contract(addr, ["function symbol() view returns (string)"], provider);
+    return await erc.symbol();
+  }catch(e){ return null; }
+}
+
+function short(a){ return a.slice(0,6) + "…" + a.slice(-4); }
+
+function cp(id){
+  const t = document.getElementById(id).textContent;
+  navigator.clipboard && navigator.clipboard.writeText(t);
+}
+
+function setCheck(cardId, valId, pass, passWord, failWord){
+  const card = document.getElementById(cardId);
+  card.classList.remove("pass","fail");
+  card.classList.add(pass ? "pass" : "fail");
+  document.getElementById(valId).textContent = pass ? passWord : failWord;
+}
+
+async function run(){
+  const tokenAddr = document.getElementById("tok").value.trim();
+  const status = document.getElementById("status");
+  const scan = document.getElementById("scan");
+  const btn = document.getElementById("go");
+  status.classList.remove("err");
+
+  if(!/^0x[a-fA-F0-9]{40}$/.test(tokenAddr)){
+    status.textContent = "Enter a valid token address — 0x followed by 40 hex characters.";
+    status.classList.add("err");
+    return;
+  }
+
+  btn.disabled = true; scan.classList.add("on");
+  status.textContent = "Querying attestation contract on Mantle…";
+  document.getElementById("result").style.display = "none";
+
+  try{
+    const [v, sym] = await Promise.all([ readVerdict(tokenAddr), tokenSymbol(tokenAddr) ]);
+
+    document.getElementById("tname").textContent = sym || "Unknown token";
+    document.getElementById("taddr").textContent = short(tokenAddr);
+
+    setCheck("c-id","v-id", v.id, "Pass — identity verified", "Fail — identity unverified");
+    setCheck("c-bk","v-bk", v.bk, "Pass — backing verified",  "Fail — backing unverified");
+
+    document.getElementById("summary").textContent = v.summary || "No summary stored.";
+    document.getElementById("rhash").textContent = v.hash || "—";
+    document.getElementById("ts").textContent = v.ts > 0n
+      ? new Date(Number(v.ts) * 1000).toUTCString() + "  ·  unix " + v.ts.toString()
+      : "—";
+
+    const seal = document.getElementById("seal");
+    seal.classList.remove("mint","red","amber");
+    let word, cls;
+    if(v.id && v.bk){ word = "VERIFIED"; cls = "mint"; }
+    else if(v.id && !v.bk){ word = "FLAGGED"; cls = "amber"; }
+    else { word = "REJECTED"; cls = "red"; }
+    seal.classList.add(cls);
+    seal.innerHTML = word + "<small>ATTESTED ON MANTLE</small>";
+
+    document.getElementById("result").style.display = "block";
+    status.textContent = "Verdict read live from " + short(CONTRACT) + " · Mantle mainnet.";
+  }catch(e){
+    status.textContent = e.message || "Read failed. Check the token address or RPC.";
+    status.classList.add("err");
+  }finally{
+    btn.disabled = false; scan.classList.remove("on");
+  }
+}
+
+// auto-run on load so the screen recording opens straight onto a live read
+window.addEventListener("load", () => setTimeout(run, 400));
+</script>
+</body>
+</html>
